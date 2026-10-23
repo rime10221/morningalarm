@@ -25,6 +25,13 @@ class AlarmReceiver : BroadcastReceiver() {
                         .putExtra(AlarmService.EXTRA_LABEL, alarm?.label?.ifBlank { "알람" } ?: "테스트 알람"),
                 )
             }
+            ACTION_SNOOZE_FIRE -> ContextCompat.startForegroundService(
+                context,
+                Intent(context, AlarmService::class.java)
+                    .setAction(AlarmService.ACTION_RING)
+                    .putExtra(AlarmService.EXTRA_LABEL, intent.getStringExtra(AlarmService.EXTRA_LABEL) ?: "알람")
+                    .putExtra(AlarmService.EXTRA_SNOOZE_USED, intent.getIntExtra(AlarmService.EXTRA_SNOOZE_USED, 1)),
+            )
             ACTION_WAKE_CHECK -> ContextCompat.startForegroundService(
                 context,
                 Intent(context, AlarmService::class.java).setAction(AlarmService.ACTION_CHECK),
@@ -35,6 +42,7 @@ class AlarmReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_FIRE = "com.rime.morningalarm.FIRE"
         const val ACTION_WAKE_CHECK = "com.rime.morningalarm.WAKE_CHECK"
+        const val ACTION_SNOOZE_FIRE = "com.rime.morningalarm.SNOOZE_FIRE"
         const val EXTRA_ALARM_ID = "alarm_id"
     }
 }

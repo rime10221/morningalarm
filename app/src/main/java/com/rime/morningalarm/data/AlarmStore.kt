@@ -54,6 +54,16 @@ object AlarmStore {
         prefs.edit().putString("settings", s.toJson().toString()).apply()
     }
 
+    /**
+     * 알람이 울리기 전 원래 알람 볼륨. 프로세스가 죽어도 복원할 수 있게 디스크에 저장한다.
+     * -1 이면 저장된 값 없음.
+     */
+    var savedVolume: Int
+        get() = prefs.getInt("saved_volume", -1)
+        set(v) {
+            prefs.edit().putInt("saved_volume", v).commit()
+        }
+
     private fun saveAlarms(list: List<Alarm>) {
         val sorted = list.sortedWith(compareBy({ it.hour }, { it.minute }))
         _alarms.value = sorted

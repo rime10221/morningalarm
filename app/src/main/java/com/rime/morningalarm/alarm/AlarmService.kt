@@ -29,6 +29,9 @@ import com.rime.morningalarm.ui.RingActivity
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * 알람을 실제로 울리는 포그라운드 서비스.
@@ -45,7 +48,6 @@ class AlarmService : Service() {
     private var torch: Torch? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
-    private var savedAlarmVolume = -1
     private var ttsSpeaking = false
     private var lastVoiceAt = 0L
     private var hiddenTicks = 0
@@ -61,7 +63,14 @@ class AlarmService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_RING -> startRinging(intent.getStringExtra(EXTRA_LABEL) ?: "알람", 0.0)
+            ACTION_RING -> {
+                val used = intent.getIntExtra(EXTRA_SNOOZE_USED, 0)
+                // 다시 울림 후에는 부드러운 시작 없이 거칠기 단계(20초)부터
+                startRinging(intent.getStringExtra(EXTRA_LABEL) ?: "알람", if (used > 0) 20.0 else 0.0, used)
+            }
+            ACTION_SNOOZE -> AlarmState.session.value?.let { s ->
+                if (s.mode == RingMode.RINGING && s.snoozeLeft > 0) snooze(s)
+            }
             ACTION_CHECK -> {
                 // 울리는 중에 기상 확인이 끼어들면 그게 탈출구가 되므로 무시
                 if (AlarmState.session.value?.mode == RingMode.RINGING) return START_REDELIVER_INTENT
@@ -83,14 +92,24 @@ class AlarmService : Service() {
 
     // ---------------------------------------------------------------- modes
 
-    private fun startRinging(label: String, startAt: Double) {
+    /**
+     * @param snoozeUsed 이번 알람에서 다시 울림을 누른 횟수. -1 이면 다시 울림 불가
+     *   (기상 확인 실패로 다시 울리는 경우).
+     */
+    private fun startRinging(label: String, startAt: Double, snoozeUsed: Int = 0) {
         AlarmScheduler.cancelWakeCheck(this)
+        getSystemService(NotificationManager::class.java).cancel(SNOOZE_NOTIFICATION_ID)
         goForeground("⏰ $label", "문제를 풀어야 꺼집니다")
-        AlarmState.session.value = RingSession(RingMode.RINGING, label)
+        val settings = AlarmStore.settings.value
+        val snoozeLeft = if (snoozeUsed < 0 || !settings.snooze) 0
+        else (settings.snoozeMax - snoozeUsed).coerceAtLeast(0)
+        AlarmState.session.value = RingSession(
+            RingMode.RINGING, label,
+            snoozeLeft = snoozeLeft, snoozeUsed = snoozeUsed.coerceAtLeast(0),
+        )
         acquireWakeLock()
         forceMaxVolume()
 
-        val settings = AlarmStore.settings.value
         val seed = System.currentTimeMillis() / 86_400_000L * 7919L + label.hashCode() + (startAt * 13).toLong()
         engine?.stop()
         engine = WakeSoundEngine(seed).also { it.startAlarm(startAt) }
@@ -125,6 +144,26 @@ class AlarmService : Service() {
         vibrate(longArrayOf(0, 200, 1800))
         launchRingScreen()
         restartTicker()
+    }
+
+    /** 다시 울림: 소리를 끄고 볼륨을 원래대로 돌린 뒤 N분 후 다시 울린다. */
+    private fun snooze(s: RingSession) {
+        val minutes = AlarmStore.settings.value.snoozeMinutes
+        stopEverything()
+        val at = AlarmScheduler.scheduleSnooze(this, minutes, s.label, s.snoozeUsed + 1)
+        val time = SimpleDateFormat("a h:mm", Locale.KOREAN).format(Date(at))
+        val left = s.snoozeLeft - 1
+        getSystemService(NotificationManager::class.java).notify(
+            SNOOZE_NOTIFICATION_ID,
+            NotificationCompat.Builder(this, CHANNEL_INFO)
+                .setSmallIcon(R.drawable.ic_alarm)
+                .setContentTitle("다시 알림 · $time")
+                .setContentText(if (left > 0) "다시 알림 ${left}회 남음" else "다음엔 다시 알림 없이 미션을 풀어야 합니다")
+                .setOngoing(true)
+                .setSilent(true)
+                .build(),
+        )
+        stopSelf()
     }
 
     /** 미션 성공. */
@@ -162,7 +201,7 @@ class AlarmService : Service() {
                 }
             } else if (now > session.checkDeadline) {
                 // 확인하지 않음 = 다시 잠듦 → 처음부터가 아니라 최고 강도로 바로 울린다
-                startRinging("다시 잠들었나요?", 45.0)
+                startRinging("다시 잠들었나요?", 45.0, snoozeUsed = -1)
                 return
             }
 
@@ -245,28 +284,32 @@ class AlarmService : Service() {
             .apply { acquire(3 * 60 * 60 * 1000L) }
     }
 
-    /** 알람 볼륨을 최대로 고정. 사용자가 볼륨을 줄여도 1초 안에 원상복구. */
+    /**
+     * 알람 볼륨을 최대로 고정. 사용자가 볼륨을 줄이거나 음소거해도 1초 안에 원상복구.
+     * 처음 한 번 원래 볼륨을 디스크에 저장해 두고, 알람이 끝나면 [restoreVolume] 으로 되돌린다.
+     */
     private fun forceMaxVolume() {
         val am = getSystemService(AudioManager::class.java)
+        val stream = AudioManager.STREAM_ALARM
         try {
-            if (savedAlarmVolume < 0) savedAlarmVolume = am.getStreamVolume(AudioManager.STREAM_ALARM)
-            val max = am.getStreamMaxVolume(AudioManager.STREAM_ALARM)
-            if (am.getStreamVolume(AudioManager.STREAM_ALARM) != max) {
-                am.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
-            }
+            if (AlarmStore.savedVolume < 0) AlarmStore.savedVolume = am.getStreamVolume(stream)
+            if (am.isStreamMute(stream)) am.adjustStreamVolume(stream, AudioManager.ADJUST_UNMUTE, 0)
+            val max = am.getStreamMaxVolume(stream)
+            if (am.getStreamVolume(stream) != max) am.setStreamVolume(stream, max, 0)
         } catch (_: SecurityException) {
             // 방해금지 정책상 변경 불가한 기기
         }
     }
 
     private fun restoreVolume() {
-        if (savedAlarmVolume < 0) return
+        val saved = AlarmStore.savedVolume
+        if (saved < 0) return
         try {
             getSystemService(AudioManager::class.java)
-                .setStreamVolume(AudioManager.STREAM_ALARM, savedAlarmVolume, 0)
+                .setStreamVolume(AudioManager.STREAM_ALARM, saved, 0)
         } catch (_: SecurityException) {
         }
-        savedAlarmVolume = -1
+        AlarmStore.savedVolume = -1
     }
 
     private fun vibrator(): Vibrator =
@@ -321,13 +364,17 @@ class AlarmService : Service() {
         const val ACTION_CHECK = "com.rime.morningalarm.CHECK"
         const val ACTION_DISMISS = "com.rime.morningalarm.DISMISS"
         const val ACTION_CHECK_OK = "com.rime.morningalarm.CHECK_OK"
+        const val ACTION_SNOOZE = "com.rime.morningalarm.SNOOZE"
         const val EXTRA_LABEL = "label"
+        const val EXTRA_SNOOZE_USED = "snooze_used"
 
         const val CHECK_WINDOW_MS = 60_000L
         private const val VOICE_INTERVAL_MS = 22_000L
         private const val TICK_MS = 500L
         private const val NOTIFICATION_ID = 42
         private const val CHANNEL_RING = "ring"
+        private const val CHANNEL_INFO = "info"
+        private const val SNOOZE_NOTIFICATION_ID = 43
 
         fun createChannels(context: Context) {
             val nm = context.getSystemService(NotificationManager::class.java)
@@ -339,6 +386,9 @@ class AlarmService : Service() {
                 setBypassDnd(true)
             }
             nm.createNotificationChannel(ch)
+            nm.createNotificationChannel(
+                NotificationChannel(CHANNEL_INFO, "다시 알림 안내", NotificationManager.IMPORTANCE_LOW),
+            )
         }
 
         fun send(context: Context, action: String) {

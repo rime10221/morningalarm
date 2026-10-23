@@ -47,12 +47,16 @@ data class WakeSettings(
     val difficulty: Int = 1,
     val wakeCheck: Boolean = true,
     val wakeCheckMinutes: Int = 3,
+    val snooze: Boolean = true,
+    val snoozeMinutes: Int = 5,
+    val snoozeMax: Int = 3,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("name", name).put("voice", voice).put("vibrate", vibrate)
         .put("screenFlash", screenFlash).put("torchStrobe", torchStrobe)
         .put("missionCount", missionCount).put("difficulty", difficulty)
         .put("wakeCheck", wakeCheck).put("wakeCheckMinutes", wakeCheckMinutes)
+        .put("snooze", snooze).put("snoozeMinutes", snoozeMinutes).put("snoozeMax", snoozeMax)
 
     companion object {
         fun fromJson(o: JSONObject) = WakeSettings(
@@ -65,6 +69,9 @@ data class WakeSettings(
             difficulty = o.optInt("difficulty", 1),
             wakeCheck = o.optBoolean("wakeCheck", true),
             wakeCheckMinutes = o.optInt("wakeCheckMinutes", 3),
+            snooze = o.optBoolean("snooze", true),
+            snoozeMinutes = o.optInt("snoozeMinutes", 5),
+            snoozeMax = o.optInt("snoozeMax", 3),
         )
     }
 }

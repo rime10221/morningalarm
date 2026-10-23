@@ -103,6 +103,29 @@ fun SettingsScreen(perms: PermStatus) {
             IOSRow("플래시 라이트 점멸") { IOSSwitch(s.torchStrobe, { v -> update { it.copy(torchStrobe = v) } }) }
         }
 
+        // ---------------------------------------------------------- 다시 알림
+        GroupedSection(
+            header = "다시 알림",
+            footer = "다시 알림을 누르면 소리가 멈추고 볼륨이 원래대로 돌아갑니다. 다시 울릴 땐 처음 20초를 건너뛰고 " +
+                "바로 거친 소리부터 시작합니다. 횟수를 다 쓰면 미션으로만 끌 수 있습니다.",
+        ) {
+            IOSRow("다시 알림") { IOSSwitch(s.snooze, { v -> update { it.copy(snooze = v) } }) }
+            if (s.snooze) {
+                IOSDivider()
+                IOSRow("간격") {
+                    Text("${s.snoozeMinutes}분", style = ios(17, color = IOS.Secondary))
+                    Spacer(Modifier.width(12.dp))
+                    Stepper(s.snoozeMinutes, 1..30) { v -> update { it.copy(snoozeMinutes = v) } }
+                }
+                IOSDivider()
+                IOSRow("최대 횟수") {
+                    Text("${s.snoozeMax}회", style = ios(17, color = IOS.Secondary))
+                    Spacer(Modifier.width(12.dp))
+                    Stepper(s.snoozeMax, 1..10) { v -> update { it.copy(snoozeMax = v) } }
+                }
+            }
+        }
+
         // ---------------------------------------------------------- 미션
         GroupedSection(
             header = "끄기 미션",

@@ -184,6 +184,10 @@ private fun AlertScreen(session: RingSession, onStart: () -> Unit) {
             style = ios(15, color = fg.copy(alpha = 0.6f)),
         )
         Spacer(Modifier.weight(1f))
+        if (session.snoozeLeft > 0) {
+            SnoozeButton(fg, session.snoozeLeft, AlarmStore.settings.collectAsState().value.snoozeMinutes)
+            Spacer(Modifier.height(28.dp))
+        }
         SlideToStart("밀어서 미션 시작", fg, bg, onStart)
         Spacer(Modifier.height(12.dp))
         Text(
@@ -191,6 +195,32 @@ private fun AlertScreen(session: RingSession, onStart: () -> Unit) {
             style = ios(13, color = fg.copy(alpha = 0.5f)),
         )
         Spacer(Modifier.height(40.dp))
+    }
+}
+
+/** iOS 잠금화면 알람의 "다시 알림" 버튼. */
+@Composable
+private fun SnoozeButton(fg: Color, left: Int, minutes: Int) {
+    val ctx = LocalContext.current
+    val haptic = LocalHapticFeedback.current
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    Column(
+        Modifier
+            .padding(horizontal = 28.dp)
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(fg.copy(alpha = if (pressed) 0.28f else 0.18f))
+            .clickable(source, indication = null) {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                AlarmService.send(ctx, AlarmService.ACTION_SNOOZE)
+            }
+            .padding(vertical = 18.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("다시 알림", style = ios(22, FontWeight.SemiBold, IOS.Orange))
+        Spacer(Modifier.height(2.dp))
+        Text("${minutes}분 후 · ${left}회 남음", style = ios(14, color = fg.copy(alpha = 0.6f)))
     }
 }
 

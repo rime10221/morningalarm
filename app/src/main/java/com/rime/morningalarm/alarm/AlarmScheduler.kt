@@ -14,6 +14,7 @@ import java.util.Calendar
 object AlarmScheduler {
     private const val TAG = "AlarmScheduler"
     private const val WAKE_CHECK_REQUEST = 900_001
+    private const val SNOOZE_REQUEST = 900_002
     const val TEST_ALARM_ID = -1
 
     /** 다음 울릴 시각(epoch ms). */
@@ -68,6 +69,21 @@ object AlarmScheduler {
     /** 테스트용: 지금부터 N초 후 울림. */
     fun scheduleTest(context: Context, seconds: Int) {
         setAlarmClock(context, System.currentTimeMillis() + seconds * 1000L, firePendingIntent(context, TEST_ALARM_ID))
+    }
+
+    /** 다시 울림: N분 후 같은 레이블로 다시 울린다. 울릴 시각을 반환. */
+    fun scheduleSnooze(context: Context, minutes: Int, label: String, used: Int): Long {
+        val at = System.currentTimeMillis() + minutes * 60_000L
+        val pi = PendingIntent.getBroadcast(
+            context, SNOOZE_REQUEST,
+            Intent(context, AlarmReceiver::class.java)
+                .setAction(AlarmReceiver.ACTION_SNOOZE_FIRE)
+                .putExtra(AlarmService.EXTRA_LABEL, label)
+                .putExtra(AlarmService.EXTRA_SNOOZE_USED, used),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        setAlarmClock(context, at, pi)
+        return at
     }
 
     private fun wakeCheckPendingIntent(context: Context): PendingIntent =
