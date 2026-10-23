@@ -54,6 +54,17 @@ fun SettingsScreen(perms: PermStatus) {
     } catch (_: Exception) {
         Toast.makeText(ctx, "설정 화면을 열 수 없습니다", Toast.LENGTH_SHORT).show()
     }
+    var showPatternSetup by remember { mutableStateOf(false) }
+    if (showPatternSetup) {
+        PatternSetupDialog(
+            onDismiss = { showPatternSetup = false },
+            onSave = { dots ->
+                update { it.copy(pattern = dots.joinToString(","), missionType = 1) }
+                showPatternSetup = false
+                Toast.makeText(ctx, "패턴을 저장했어요", Toast.LENGTH_SHORT).show()
+            },
+        )
+    }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok ->
         if (!ok) open(Perms.notificationSettings(ctx))
     }
@@ -129,23 +140,56 @@ fun SettingsScreen(perms: PermStatus) {
         // ---------------------------------------------------------- 미션
         GroupedSection(
             header = "끄기 미션",
-            footer = "30초 동안 입력이 없으면 처음부터 다시 풀어야 합니다.",
+            footer = when (s.missionType) {
+                1 -> "미리 등록한 패턴을 그리면 꺼집니다. 2–3초면 끝나 가장 빠르지만, 손에 익으면 반쯤 잠든 채로도 그릴 수 있습니다."
+                2 -> "\"빨간 동그라미\"처럼 색과 모양이 모두 맞는 칸을 고릅니다. 매번 새 문제라 눈으로 보고 판단해야 합니다. 한 판에 3–5초."
+                else -> "암산은 가장 확실하게 뇌를 깨우지만 시간이 걸립니다."
+            } + " 30초 동안 입력이 없으면 처음부터 다시 해야 합니다.",
         ) {
-            IOSRow("문제 수") {
-                Text("${s.missionCount}개", style = ios(17, color = IOS.Secondary))
-                Spacer(Modifier.width(12.dp))
-                Stepper(s.missionCount, 1..10) { v -> update { it.copy(missionCount = v) } }
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                SegmentedControl(listOf("암산", "패턴", "캡챠"), s.missionType, { v ->
+                    update { it.copy(missionType = v) }
+                    if (v == 1 && s.patternDots.size < 4) showPatternSetup = true
+                })
             }
             IOSDivider()
+            when (s.missionType) {
+                1 -> IOSRow("패턴", onClick = { showPatternSetup = true }) {
+                    if (s.patternDots.size >= 4) ValueChevron("변경")
+                    else ValueChevron("등록 필요", IOS.Orange)
+                }
+                2 -> IOSRow("라운드 수") {
+                    Text("${s.missionCount.coerceIn(1, 5)}판", style = ios(17, color = IOS.Secondary))
+                    Spacer(Modifier.width(12.dp))
+                    Stepper(s.missionCount.coerceIn(1, 5), 1..5) { v -> update { it.copy(missionCount = v) } }
+                }
+                else -> {
+                    IOSRow("문제 수") {
+                        Text("${s.missionCount}개", style = ios(17, color = IOS.Secondary))
+                        Spacer(Modifier.width(12.dp))
+                        Stepper(s.missionCount, 1..10) { v -> update { it.copy(missionCount = v) } }
+                    }
+                    IOSDivider()
+                    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text("난이도", style = ios(17))
+                        Spacer(Modifier.height(10.dp))
+                        SegmentedControl(listOf("쉬움", "보통", "어려움"), s.difficulty, { v -> update { it.copy(difficulty = v) } })
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            listOf("예) 37 + 25", "예) 34 × 7 + 52", "예) 27 × 18 + 41")[s.difficulty.coerceIn(0, 2)],
+                            style = ios(13, color = IOS.Secondary),
+                        )
+                    }
+                }
+            }
+        }
+
+        GroupedSection(
+            header = "미션 중 소리",
+            footer = "단체생활이라면 '끄기'를 추천합니다. 미션을 시작하는 순간 조용해지고, 30초 손을 놓으면 다시 울립니다.",
+        ) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text("난이도", style = ios(17))
-                Spacer(Modifier.height(10.dp))
-                SegmentedControl(listOf("쉬움", "보통", "어려움"), s.difficulty, { v -> update { it.copy(difficulty = v) } })
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    listOf("예) 37 + 25", "예) 34 × 7 + 52", "예) 27 × 18 + 41")[s.difficulty.coerceIn(0, 2)],
-                    style = ios(13, color = IOS.Secondary),
-                )
+                SegmentedControl(listOf("그대로", "작게", "끄기"), s.missionSound, { v -> update { it.copy(missionSound = v) } })
             }
         }
 

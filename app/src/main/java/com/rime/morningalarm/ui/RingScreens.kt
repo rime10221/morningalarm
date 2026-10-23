@@ -85,8 +85,6 @@ import kotlin.math.roundToInt
 
 private enum class Stage { ALERT, MISSION, DONE }
 
-private const val MISSION_IDLE_MS = 30_000L
-
 @Composable
 fun RingRoot(onFinish: () -> Unit) {
     val ctx = LocalContext.current
@@ -128,7 +126,7 @@ fun RingRoot(onFinish: () -> Unit) {
 }
 
 @Composable
-private fun rememberNow(periodMs: Long = 1000): Long {
+internal fun rememberNow(periodMs: Long = 1000): Long {
     val now by produceState(System.currentTimeMillis()) {
         while (true) {
             delay(periodMs)
@@ -291,178 +289,6 @@ private fun SlideToStart(text: String, fg: Color, bg: Color, onDone: () -> Unit)
             contentAlignment = Alignment.Center,
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = bg, modifier = Modifier.size(30.dp))
-        }
-    }
-}
-
-// ------------------------------------------------------------------ mission
-
-@Composable
-private fun MissionScreen(onSolved: () -> Unit, onIdle: () -> Unit) {
-    val settings = remember { AlarmStore.settings.value }
-    val total = settings.missionCount.coerceAtLeast(1)
-    val haptic = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
-
-    var solved by remember { mutableIntStateOf(0) }
-    var problem by remember { mutableStateOf(MathMission.generate(settings.difficulty)) }
-    var input by remember { mutableStateOf("") }
-    var wrong by remember { mutableStateOf(false) }
-    var lastInput by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    val shake = remember { Animatable(0f) }
-
-    // 30초 동안 손을 놓으면 = 다시 잠들고 있다 → 처음부터
-    LaunchedEffect(lastInput) {
-        delay(MISSION_IDLE_MS)
-        onIdle()
-    }
-    val now = rememberNow(100)
-    val idleLeft = (1f - (now - lastInput).toFloat() / MISSION_IDLE_MS).coerceIn(0f, 1f)
-
-    fun press(key: String) {
-        lastInput = System.currentTimeMillis()
-        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-        wrong = false
-        when (key) {
-            "⌫" -> input = input.dropLast(1)
-            "OK" -> {
-                if (input.isEmpty()) return
-                if (input.toIntOrNull() == problem.answer) {
-                    solved++
-                    if (solved >= total) {
-                        onSolved()
-                        return
-                    }
-                    problem = MathMission.generate(settings.difficulty)
-                    input = ""
-                } else {
-                    wrong = true
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    scope.launch {
-                        for (dx in listOf(18f, -16f, 12f, -8f, 4f, 0f)) shake.animateTo(dx, tween(45))
-                    }
-                    input = ""
-                    problem = MathMission.generate(settings.difficulty)
-                }
-            }
-            else -> if (input.length < 6) input += key
-        }
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(IOS.LightBg)
-            .statusBarsPadding()
-            .navigationBarsPadding(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        // 남은 시간 바
-        Box(
-            Modifier
-                .padding(horizontal = 20.dp, vertical = 12.dp)
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(CircleShape)
-                .background(IOS.LightKey),
-        ) {
-            val barColor by animateColorAsState(if (idleLeft < 0.3f) IOS.LightRed else IOS.LightOrange, label = "bar")
-            Box(
-                Modifier
-                    .fillMaxWidth(idleLeft)
-                    .height(4.dp)
-                    .clip(CircleShape)
-                    .background(barColor),
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Text("문제 ${solved + 1} / $total", style = ios(17, FontWeight.SemiBold, IOS.LightSecondary))
-        Spacer(Modifier.height(10.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            repeat(total) { i ->
-                Box(
-                    Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (i < solved) IOS.LightOrange else IOS.LightKey),
-                )
-            }
-        }
-
-        Spacer(Modifier.weight(1f))
-        Column(
-            Modifier
-                .offset { IntOffset(shake.value.roundToInt(), 0) }
-                .padding(horizontal = 24.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(22.dp))
-                .background(IOS.LightCard)
-                .padding(vertical = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(problem.text, style = ios(40, FontWeight.SemiBold, IOS.LightLabel, tracking = -0.5f))
-            Spacer(Modifier.height(14.dp))
-            Text(
-                if (input.isEmpty()) "?" else input,
-                style = ios(
-                    52, FontWeight.Bold,
-                    when {
-                        wrong -> IOS.LightRed
-                        input.isEmpty() -> IOS.LightKeyPressed
-                        else -> IOS.LightLabel
-                    },
-                ),
-            )
-            Text(
-                if (wrong) "틀렸어요. 새 문제입니다." else " ",
-                style = ios(14, color = IOS.LightRed),
-            )
-        }
-        Spacer(Modifier.weight(1f))
-
-        // 키패드
-        val rows = listOf(
-            listOf("1", "2", "3"),
-            listOf("4", "5", "6"),
-            listOf("7", "8", "9"),
-            listOf("⌫", "0", "OK"),
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            rows.forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(26.dp)) {
-                    row.forEach { key -> KeypadKey(key) { press(key) } }
-                }
-            }
-        }
-        Spacer(Modifier.height(28.dp))
-    }
-}
-
-@Composable
-private fun KeypadKey(key: String, onClick: () -> Unit) {
-    val source = remember { MutableInteractionSource() }
-    val pressed by source.collectIsPressedAsState()
-    val base = when (key) {
-        "OK" -> IOS.LightOrange
-        "⌫" -> Color.Transparent
-        else -> IOS.LightKey
-    }
-    val color = if (pressed) {
-        if (key == "OK") IOS.LightOrange.copy(alpha = 0.7f) else IOS.LightKeyPressed
-    } else base
-    Box(
-        Modifier
-            .size(78.dp)
-            .clip(CircleShape)
-            .background(color)
-            .clickable(source, indication = null, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        when (key) {
-            "OK" -> Icon(Icons.Filled.Check, "확인", tint = Color.White, modifier = Modifier.size(34.dp))
-            "⌫" -> Text("지움", style = ios(18, FontWeight.Normal, IOS.LightLabel))
-            else -> Text(key, style = ios(34, FontWeight.Normal, IOS.LightLabel))
         }
     }
 }

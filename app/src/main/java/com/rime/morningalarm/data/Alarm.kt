@@ -50,13 +50,25 @@ data class WakeSettings(
     val snooze: Boolean = true,
     val snoozeMinutes: Int = 5,
     val snoozeMax: Int = 3,
+    /** 끄기 미션: 0 암산, 1 패턴, 2 캡챠 */
+    val missionType: Int = 0,
+    /** 등록한 패턴 (3x3 점 인덱스 0..8 을 쉼표로). 빈 문자열이면 미등록. */
+    val pattern: String = "",
+    /** 미션 중 소리: 0 그대로, 1 작게, 2 끄기 */
+    val missionSound: Int = 1,
 ) {
+    val patternDots: List<Int> get() = pattern.split(',').mapNotNull { it.toIntOrNull() }
+
+    /** 패턴 미션인데 패턴이 없으면 암산으로 대체. */
+    val effectiveMission: Int get() = if (missionType == 1 && patternDots.size < 4) 0 else missionType
+
     fun toJson(): JSONObject = JSONObject()
         .put("name", name).put("voice", voice).put("vibrate", vibrate)
         .put("screenFlash", screenFlash).put("torchStrobe", torchStrobe)
         .put("missionCount", missionCount).put("difficulty", difficulty)
         .put("wakeCheck", wakeCheck).put("wakeCheckMinutes", wakeCheckMinutes)
         .put("snooze", snooze).put("snoozeMinutes", snoozeMinutes).put("snoozeMax", snoozeMax)
+        .put("missionType", missionType).put("pattern", pattern).put("missionSound", missionSound)
 
     companion object {
         fun fromJson(o: JSONObject) = WakeSettings(
@@ -72,6 +84,9 @@ data class WakeSettings(
             snooze = o.optBoolean("snooze", true),
             snoozeMinutes = o.optInt("snoozeMinutes", 5),
             snoozeMax = o.optInt("snoozeMax", 3),
+            missionType = o.optInt("missionType", 0),
+            pattern = o.optString("pattern", ""),
+            missionSound = o.optInt("missionSound", 1),
         )
     }
 }

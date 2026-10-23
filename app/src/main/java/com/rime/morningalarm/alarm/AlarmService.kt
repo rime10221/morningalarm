@@ -229,7 +229,11 @@ class AlarmService : Service() {
     private fun updateDuck() {
         engine?.duck = when {
             ttsSpeaking -> 0.18f
-            AlarmState.inMission.value -> 0.6f
+            AlarmState.inMission.value -> when (AlarmStore.settings.value.missionSound) {
+                0 -> 1f
+                2 -> 0f
+                else -> 0.5f
+            }
             else -> 1f
         }
     }

@@ -97,6 +97,18 @@ class WakeSoundEngineTest {
         assertNotEquals(MathMission.generate(1, Random(1)), MathMission.generate(1, Random(2)))
     }
 
+    @Test
+    fun captchaHasTwoToFourAnswersAndConfusingDecoys() {
+        val rnd = Random(3)
+        repeat(2000) {
+            val p = com.rime.morningalarm.mission.Captcha.generate(rnd)
+            assertEquals(9, p.tiles.size)
+            assertTrue(p.answer.size in 2..4)
+            // 정답이 아닌 칸은 절대 타깃과 같지 않다
+            p.tiles.forEachIndexed { i, t -> if (i !in p.answer) assertNotEquals(p.target, t) }
+        }
+    }
+
     private fun writeWav(f: File, pcm: ShortArray, sr: Int = 44100) {
         f.parentFile?.mkdirs()
         RandomAccessFile(f, "rw").use { out ->

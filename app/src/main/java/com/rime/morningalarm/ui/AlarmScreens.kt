@@ -299,8 +299,13 @@ fun AlarmEditor(
             }
 
             val diff = listOf("쉬움", "보통", "어려움")[settings.difficulty.coerceIn(0, 2)]
+            val how = when (settings.effectiveMission) {
+                1 -> "등록한 패턴을 그려야"
+                2 -> "캡챠 ${settings.missionCount.coerceIn(1, 5)}판을 풀어야"
+                else -> "암산 문제 ${settings.missionCount}개($diff)를 풀어야"
+            }
             SectionFooter(
-                "끄려면 암산 문제 ${settings.missionCount}개($diff)를 풀어야 합니다." +
+                "끄려면 $how 합니다." +
                     if (settings.wakeCheck) " 끈 뒤 ${settings.wakeCheckMinutes}분 후 다시 깨어 있는지 확인합니다." else "",
             )
 
